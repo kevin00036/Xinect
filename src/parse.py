@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 import numpy as np
 from os import path
 import matplotlib.pyplot as plt
-from sklearn import svm
+from sklearn import svm, cluster
 import random
 
 def cos_sim(a, b):
@@ -24,21 +25,45 @@ def load_data(data_type, num, label):
 
     return data, lab
 
-d1, l1 = load_data('lock', 10, 1)
-d2, l2 = load_data('scuba', 6, 2)
-d2, l2 = load_data('mix', 1, 0)
+def compress(l, thr=2):
+    ret = []
+    lst = None
+    cnt = 0
+    for c in l:
+        if lst != c:
+            cnt = 1
+            lst = c
+        else:
+            cnt += 1
+        if cnt == thr:
+            ret.append(c)
+    if thr > 1:
+        ret = compress(ret, thr=1)
+    return ret
 
-model = svm.LinearSVC()
+def main():
+    d1, _ = load_data('random', 1, 1)
+    d_l, _ = load_data('lock', 10, 1)
+    d_s, _ = load_data('scuba', 6, 1)
+    d_m, _ = load_data('mix', 1, 1)
 
-d_train = np.concatenate(d1 + d2, axis=0)
-l_train = np.concatenate(l1 + l2)
+    d_train = np.concatenate(d1, axis=0)
+    d_l = np.concatenate(d_l, axis=0)
+    d_s = np.concatenate(d_s, axis=0)
+    d_m = np.concatenate(d_m, axis=0)
 
-d_test = np.concatenate(d3, axis=0)
-l_test = np.concatenate(l3)
+    cluster_model = cluster.KMeans(n_clusters=20, random_state=514, n_jobs=4)
 
-model.fit(d_train, l_train)
+    lab = cluster_model.fit_predict(d_train)
+    clab = compress(lab)
 
-p = model.predict(d_test)
-print(p, l_test)
-cor = np.mean(p == l_test)
-print(cor)
+    llab = cluster_model.transform(d_l)
+    slab = compress(cluster_model.predict(d_s))
+    mlab = compress(cluster_model.predict(d_m))
+
+    print(llab)
+
+
+
+if __name__ == '__main__':
+    main()
