@@ -2,7 +2,7 @@
 import numpy as np
 from os import path
 import matplotlib.pyplot as plt
-from sklearn import svm, cluster
+from sklearn import svm, cluster, decomposition, mixture
 from hmmlearn import hmm
 import random
 
@@ -19,7 +19,7 @@ def load_data(data_type, num, label):
     for fn in filenames:
         d = [[float(x) for x in l.strip().split()] for l in open(fn)]
         d = np.array(d)
-        d = np.concatenate([d[:, 1:46],d[:, 49:110]], axis=1)
+        d = np.concatenate([d[:, 46:46],d[:, 49:110]], axis=1)
         data.append(d)
 
     lab = [np.array([label] * x.shape[0]) for x in data]
@@ -56,27 +56,37 @@ d_sk = np.concatenate(d_sk, axis=0)
 d_p = np.concatenate(d_p, axis=0)
 d_m = np.concatenate(d_m, axis=0)
 
-N = 20
-cluster_model = cluster.KMeans(n_clusters=N, random_state=514, n_jobs=8)
+N_cluster = 20
+cluster_model = mixture.GMM(n_components=N_cluster, random_state=514)
+# lab = cluster_model.fit_predict(np.concatenate([d_s, d_l, d_sk, d_p], axis=0))
+lab = cluster_model.fit_predict(d_s)
+# clab = compress(lab)
+llab = cluster_model.predict(d_l)
+slab = cluster_model.predict(d_s)
+mlab = cluster_model.predict(d_m)
 
-lab = cluster_model.fit_predict(d_train)
-clab = compress(lab)
+print(compress(llab))
+print(compress(slab))
+print(compress(mlab))
 
-llab = cluster_model.transform(d_l)
-slab = cluster_model.transform(d_s)
-mlab = cluster_model.transform(d_m)
+# pca_model = decomposition.PCA(n_components=50)
+# pca_model.fit(d_train)
+# d_l, d_s, d_m, d_sk, d_p = [pca_model.transform(x) for x in [d_l, d_s, d_m, d_sk, d_p]]
 
-# d_l, d_s, d_m = llab, slab, mlab
+N_State = N_cluster
 
-N_State = 20
-
-hmm_l = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="viterbi")
+hmm_l = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="map")
 hmm_l.fit([d_l])
-hmm_s = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="viterbi")
+hmm_s = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="map", init_params="mc")
+hmm_s.means_ = cluster_model.means_
+hmm_s.covars_ = cluster_model.covars_
 hmm_s.fit([d_s])
-hmm_sk = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="viterbi")
+# tmp = hmm_s.transmat_ + 0.02
+# hmm_s.transmat_ = tmp / np.sum(tmp, axis=1)
+print(hmm_s.transmat_)
+hmm_sk = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="map")
 hmm_sk.fit([d_sk])
-hmm_p = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="viterbi")
+hmm_p = hmm.GaussianHMM(n_components=N_State, covariance_type="diag", n_iter=1000, algorithm="map")
 hmm_p.fit([d_p])
 
 sc_l = []
@@ -85,16 +95,28 @@ sc_sk = []
 sc_p = []
 
 print(hmm_s.score(d_l), hmm_s.score(d_s), hmm_s.score(d_m))
-print(list(hmm_s.predict(d_s)))
+print(compress(list(hmm_s.predict(d_s))))
+print(compress(list(hmm_s.predict(d_m))))
 
-dd = np.concatenate([d_l, d_s, d_sk, d_p, d_m, d_train], axis=0)
+# dd = np.concatenate([d_l, d_s, d_sk, d_p, d_m, d_train], axis=0)
+dd = np.concatenate([d_l, d_s, d_m], axis=0)
+
+seq = hmm_s.predict(dd)
+gg = []
+for i in range(dd.shape[0]-1):
+    pb = -np.sum((dd[i,:] - hmm_s.means_[seq[i],:])**2 / np.diag(hmm_s.covars_[seq[i]])) / 2
+    # pb = 0
+    pb += np.log(hmm_s.transmat_[seq[i], seq[i+1]])
+    gg.append(pb)
 
 step = 5
-for i in range(step, dd.shape[0]-2*step, step):
-    sc_l.append(hmm_l.score(dd[i:i+2*step, :]))
-    sc_s.append(hmm_s.score(dd[i:i+2*step, :]))
-    sc_sk.append(hmm_sk.score(dd[i:i+2*step, :]))
-    sc_p.append(hmm_p.score(dd[i:i+2*step, :]))
+window = 25
+for i in range(window, dd.shape[0]-window, step):
+    sc_l.append(hmm_l.score(dd[i-window:i+window, :]))
+    # sc_s.append(hmm_s.score(dd[i-window:i+window, :]))
+    sc_s.append(np.mean(gg[i-window:i+window]))
+    # sc_sk.append(hmm_sk.score(dd[i-window:i+window, :]))
+    # sc_p.append(hmm_p.score(dd[i-window:i+window, :]))
 
 sc_l = np.array(sc_l)
 sc_l /= -np.mean(sc_l)
