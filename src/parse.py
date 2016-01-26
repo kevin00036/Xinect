@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 from sklearn import svm, cluster, decomposition, mixture
 from hmmlearn import hmm
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.core import Dense, Dropout, Activation, TimeDistributedDense
 from keras.layers.recurrent import LSTM
 from keras.layers.embeddings import Embedding
 from keras.layers.normalization import BatchNormalization
-from keras.optimizers import SGD, Adam
+from keras.optimizers import *
 import random
 
 def cos_sim(a, b):
@@ -74,14 +74,16 @@ model = Sequential()
 # model.add(Activation("sigmoid"))
 # model.add(Dense(output_dim=64, init="glorot_uniform"))
 # model.add(Activation("sigmoid"))
+# model.add(Dense(output_dim=4, init="glorot_uniform"))
 # model.add(Embedding(d_train.shape[1], 128, input_length=500))
-model.add(LSTM(output_dim=128, input_dim=d_l.shape[1], activation='sigmoid', inner_activation='hard_sigmoid'))
-model.add(Dense(output_dim=4, init="glorot_uniform"))
+model.add(LSTM(output_dim=128, input_dim=d_l.shape[1], activation='tanh', return_sequences=True))
+model.add(LSTM(output_dim=32, input_dim=128, activation='tanh', return_sequences=True))
+model.add(TimeDistributedDense(output_dim=4, init="glorot_uniform"))
 model.add(Activation("softmax"))
-EPOCH = 50
+EPOCH = 100
 
 # model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.001, momentum=0.9, nesterov=True))
-model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=0.001))
+model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=0.005))
 
 X = []
 Y = []
@@ -110,11 +112,17 @@ Y = Y[perm]
 xmean = np.mean(X, axis=0)
 xstd = np.std(X, axis=0)
 
-BATCH = 64
-model.fit(X, Y, nb_epoch=EPOCH, batch_size=BATCH, class_weight=W)
+BATCH = 32
+print(X.shape, Y.shape)
+bn = Y.shape[0] // BATCH
+Xt = X[:BATCH*bn,:].reshape((BATCH, bn, X.shape[1]))
+Yt = Y[:BATCH*bn,:].reshape((BATCH, bn, Y.shape[1]))
+print(Xt.shape, Yt.shape)
+model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH)#, class_weight=W)
 
 dd = np.concatenate([d_l, d_s, d_m], axis=0)
-proba = model.predict_proba(d_t, batch_size=BATCH)
+proba = model.predict_proba(d_t[np.newaxis,:,:], batch_size=BATCH)
+proba = proba[0]
 
 K = 25
 pf = [np.mean(proba[x:x+K, :], axis=0) for x in range(proba.shape[0]-K)]
