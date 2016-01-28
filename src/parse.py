@@ -12,6 +12,9 @@ from keras.layers.normalization import BatchNormalization
 from keras.optimizers import *
 import random
 
+MEAN = None
+STD = None
+
 def cos_sim(a, b):
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
@@ -25,7 +28,11 @@ def load_data(data_type, num, label):
     for fn in filenames:
         d = [[float(x) for x in l.strip().split()] for l in open(fn)]
         d = np.array(d)
-        d = np.concatenate([d[:, 1:46],d[:, 49:110]], axis=1)
+        if d.shape[1] == 113:
+            d = np.concatenate([d[:, :64],d[:, 65:]], axis=1)
+        d = np.concatenate([d[:, 1:46],d[:, 49:109]], axis=1)
+        if MEAN is not None:
+            d = (d - MEAN) / STD
         data.append(d)
 
     lab = [np.array([label] * x.shape[0]) for x in data]
@@ -49,79 +56,101 @@ def compress(l, thr=2):
     return ret
 
 d1, _ = load_data('random', 1, 1)
+d_train = np.concatenate(d1, axis=0)
+MEAN = np.mean(d_train, axis=0)
+STD = np.std(d_train, axis=0)
+
 d_em, _ = load_data('stand', 2, 1)
 d_l, _ = load_data('lock', 15, 1)
 d_s, _ = load_data('scuba', 12, 1)
 d_sk, _ = load_data('skitter', 5, 1)
 d_p, _ = load_data('punch', 5, 1)
+d_po, _ = load_data('point', 4, 1)
+d_lpo, _ = load_data('lpoint', 4, 1)
 d_m, _ = load_data('mix', 1, 1)
-d_t, _ = load_data('test', 1, 1)
+d_t, _ = load_data('tempo3', 1, 1)
 
-d_train = np.concatenate(d1, axis=0)
-d_em = np.concatenate(d_l, axis=0)
+d_em = np.concatenate(d_em, axis=0)
 d_l = np.concatenate(d_l, axis=0)
 d_s = np.concatenate(d_s, axis=0)
 d_sk = np.concatenate(d_sk, axis=0)
 d_p = np.concatenate(d_p, axis=0)
+d_po = np.concatenate(d_po, axis=0)
+d_lpo = np.concatenate(d_lpo, axis=0)
 d_m = np.concatenate(d_m, axis=0)
 d_t = np.concatenate(d_t, axis=0)
 
+print('Preprocess complete')
+
+EPOCH = 100
+CLASS = 6
+BATCH = 32
+
 model = Sequential()
+
 # model.add(BatchNormalization(input_shape=(d_l.shape[1],)))
+
 # model.add(Dense(output_dim=128, input_dim=d_l.shape[1], init="glorot_uniform"))
 # model.add(Activation("sigmoid"))
 # model.add(Dense(output_dim=64, init="glorot_uniform"))
 # model.add(Activation("sigmoid"))
 # model.add(Dense(output_dim=64, init="glorot_uniform"))
 # model.add(Activation("sigmoid"))
-# model.add(Dense(output_dim=4, init="glorot_uniform"))
-# model.add(Embedding(d_train.shape[1], 128, input_length=500))
+# model.add(Dense(output_dim=CLASS, init="glorot_uniform"))
+
 model.add(LSTM(output_dim=128, input_dim=d_l.shape[1], activation='tanh', return_sequences=True))
 model.add(LSTM(output_dim=32, input_dim=128, activation='tanh', return_sequences=True))
-model.add(TimeDistributedDense(output_dim=4, init="glorot_uniform"))
-model.add(Activation("softmax"))
-EPOCH = 100
+model.add(TimeDistributedDense(output_dim=CLASS, init="glorot_uniform"))
 
-# model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.001, momentum=0.9, nesterov=True))
+model.add(Activation("softmax"))
+
+# model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.0003, momentum=0.9, nesterov=True))
 model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=0.005))
 
-X = []
-Y = []
-W = {}
-for i, z in enumerate([d_l, d_s, d_sk, d_p]):
-    X.append(z)
-    oz = np.zeros([4])
-    oz[i] = 1
-    Y.extend([oz]*z.shape[0])
-    # W.extend([1./z.shape[0]]*z.shape[0])
-    W[i] = 1./z.shape[0]
+train = False
 
-X = np.concatenate(X, axis=0)
-Y = np.array(Y)
-# W = np.array(W)
-rat = len(Y) / sum(W)
-for i in W:
-    W[i] *= rat
+if train:
+    X = []
+    Y = []
+    W = {}
+    for i, z in enumerate([d_l, d_s, d_sk, d_p, d_po, d_lpo]):
+        X.append(z)
+        oz = np.zeros([CLASS])
+        oz[i] = 1
+        Y.extend([oz]*z.shape[0])
+        # W.extend([1./z.shape[0]]*z.shape[0])
+        W[i] = 1./z.shape[0]
 
-perm = list(range(len(Y)))
-random.shuffle(perm)
-X = X[perm,:]
-Y = Y[perm]
-# W = W[perm]
+    X = np.concatenate(X, axis=0)
+    Y = np.array(Y)
+    # W = np.array(W)
+    rat = len(Y) / sum(W)
+    for i in W:
+        W[i] *= rat
 
-xmean = np.mean(X, axis=0)
-xstd = np.std(X, axis=0)
+    perm = list(range(len(Y)))
+    random.shuffle(perm)
+    X = X[perm,:]
+    Y = Y[perm]
+    # W = W[perm]
 
-BATCH = 32
-print(X.shape, Y.shape)
-bn = Y.shape[0] // BATCH
-Xt = X[:BATCH*bn,:].reshape((BATCH, bn, X.shape[1]))
-Yt = Y[:BATCH*bn,:].reshape((BATCH, bn, Y.shape[1]))
-print(Xt.shape, Yt.shape)
-model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH)#, class_weight=W)
+    xmean = np.mean(X, axis=0)
+    xstd = np.std(X, axis=0)
 
-dd = np.concatenate([d_l, d_s, d_m], axis=0)
-proba = model.predict_proba(d_t[np.newaxis,:,:], batch_size=BATCH)
+    print(X.shape, Y.shape)
+    bn = Y.shape[0] // BATCH
+    Xt = X[:BATCH*bn,:].reshape((BATCH, bn, X.shape[1]))
+    Yt = Y[:BATCH*bn,:].reshape((BATCH, bn, Y.shape[1]))
+    print(Xt.shape, Yt.shape)
+    model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH)#, class_weight=W)
+    model.save_weights('my_model_weights.h5')
+
+else:
+    model.load_weights('my_model_weights.h5')
+
+
+dtt = d_t[np.newaxis,:,:]
+proba = model.predict_proba(dtt, batch_size=BATCH)
 proba = proba[0]
 
 K = 25
@@ -132,6 +161,8 @@ plt.plot(pf[:, 0], label='lock')
 plt.plot(pf[:, 1], label='scuba')
 plt.plot(pf[:, 2], label='skitter')
 plt.plot(pf[:, 3], label='punch')
+plt.plot(pf[:, 4], label='point')
+plt.plot(pf[:, 5], label='lpoint')
 plt.legend()
 plt.show()
 
