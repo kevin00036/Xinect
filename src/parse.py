@@ -13,7 +13,7 @@ from keras.optimizers import *
 import random
 import glob
 
-EPOCH = 100
+EPOCH = 70
 CLASS = 5
 BATCH = 32
 
@@ -24,8 +24,9 @@ def load_label_map():
     path = '../label/map.txt'
     for line in open(path):
         a, b, c = line.split()
-        lmap[a] = int(b)
-        lmap2[int(b)] = c
+        b = int(b) - 1
+        lmap[a] = b
+        lmap2[b] = c
 
 def load_data(name):
     feature_path = '../feature/{}.txt_f.txt'.format(name)
@@ -44,8 +45,8 @@ def load_data(name):
         a, b, c = line.split()
         l = lmap[c]
         for i in range(int(a), int(b)):
-            if l <= CLASS:
-                lab[i, l-1] = 1.
+            if l < CLASS:
+                lab[i, l] = 1.
 
     return d, lab
 
@@ -65,6 +66,19 @@ def compress(l, thr=2):
         ret = compress(ret, thr=1)
     return ret
 
+def calc_acc(prob, real_prob):
+    pred = np.argmax(prob, axis=1)
+    lab = np.argmax(real_prob, axis=1)
+    total = 0
+    correct = 0
+    for i in range(real_prob.shape[0]):
+        if real_prob[i, lab[i]] < 0.5:
+            continue
+        total += 1
+        if pred[i] == lab[i]:
+            correct += 1
+    return correct / total
+
 train_datas = []
 train_labs = []
 test_datas = []
@@ -76,7 +90,7 @@ for f in files:
     fn = f.split('/')[-1].split('.')[0]
     print('Loading {}...'.format(fn))
     data, lab = load_data(fn)
-    if fn in ['test_01']:
+    if fn in ['test_01', 'tempo1_01', 'tempo3_01']:
         test_datas.append(data)
         test_labs.append(lab)
     else:
@@ -87,7 +101,6 @@ train_datas = np.concatenate(train_datas, axis=0)
 train_labs = np.concatenate(train_labs, axis=0)
 test_datas = np.concatenate(test_datas, axis=0)
 test_labs = np.concatenate(test_labs, axis=0)
-test_intlabs = np.argmax(test_labs, axis=1)
 
 print('=== Load Complete. ===')
 
@@ -97,7 +110,6 @@ train_datas = (train_datas - MEAN) / STD
 test_datas = (test_datas - MEAN) / STD
 
 print('=== Preprocess Complete. ===')
-
 
 model = Sequential()
 
@@ -126,7 +138,7 @@ if train:
     print('=== Training Started. ===')
 
     X = train_datas
-    Y = train_labels
+    Y = train_labs
 
     perm = list(range(len(Y)))
     random.shuffle(perm)
@@ -138,15 +150,19 @@ if train:
     Xt = X[:BATCH*bn,:].reshape((BATCH, bn, X.shape[1]))
     Yt = Y[:BATCH*bn,:].reshape((BATCH, bn, Y.shape[1]))
     print(Xt.shape, Yt.shape)
-    model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH)#, class_weight=W)
+    model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH, verbose=1, show_accuracy=True)
     model.save_weights('my_model_weights.h5')
 
     print('=== Training Completed. ===')
 
 else:
+    print('=== Loading Saved Model.... ===')
     model.load_weights('my_model_weights.h5')
+    print('=== Model Loaded. ===')
 
 print('=== Prediction Started. ===')
+
+train_proba = model.predict_proba(train_datas[np.newaxis,:,:], batch_size=BATCH)[0]
 
 dtt = test_datas[np.newaxis,:,:]
 proba = model.predict_proba(dtt, batch_size=BATCH)
@@ -154,15 +170,19 @@ proba = proba[0]
 
 print('=== Prediction Completed. ===')
 
+acc_train = calc_acc(train_proba, train_labs)
+print('Acc_train = {}%'.format(100 * acc_train))
+acc_test = calc_acc(proba, test_labs)
+print('Acc_test = {}%'.format(100 * acc_test))
+
 K = 25
 pf = [np.mean(proba[x:x+K, :], axis=0) for x in range(proba.shape[0]-K)]
 pf = np.array(pf)
 
-for i in range(CLAS):
+for i in range(CLASS):
     plt.plot(pf[:, i], label=lmap2[i])
 plt.legend()
 plt.show()
-
 
 exit()
 
