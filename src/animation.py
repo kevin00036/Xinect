@@ -98,5 +98,5 @@ def animate(i):
 anim = animation.FuncAnimation(fig, animate, init_func=init,
                                frames=X.shape[0], interval=20, blit=True)
 
-anim.save('lock.mp4', fps=40, bitrate=1000, writer='mencoder')
+anim.save('lock.mp4', fps=40, bitrate=2000)
 # plt.show()
