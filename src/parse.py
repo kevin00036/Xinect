@@ -11,30 +11,43 @@ from keras.layers.embeddings import Embedding
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import *
 import random
+import glob
 
-MEAN = None
-STD = None
+EPOCH = 100
+CLASS = 5
+BATCH = 32
 
-def load_data(data_type, num, label):
-    data_path = '../feature'.format(data_type)
-    filenames = ['{}_{:02d}.txt_f.txt'.format(data_type, i) for i in range(1, num+1)]
-    filenames = [path.join(data_path, x) for x in filenames]
+lmap = {}
+lmap2 = {}
 
-    data = []
+def load_label_map():
+    path = '../label/map.txt'
+    for line in open(path):
+        a, b, c = line.split()
+        lmap[a] = int(b)
+        lmap2[int(b)] = c
 
-    for fn in filenames:
-        d = [[float(x) for x in l.strip().split()] for l in open(fn)]
-        d = np.array(d)
-        if d.shape[1] == 113:
-            d = np.concatenate([d[:, :64],d[:, 65:]], axis=1)
-        d = np.concatenate([d[:, 1:46],d[:, 49:109]], axis=1)
-        if MEAN is not None:
-            d = (d - MEAN) / STD
-        data.append(d)
+def load_data(name):
+    feature_path = '../feature/{}.txt_f.txt'.format(name)
+    label_path = '../label/{}.txt'.format(name)
 
-    lab = [np.array([label] * x.shape[0]) for x in data]
+    d = [[float(x) for x in l.strip().split()] for l in open(feature_path)]
+    d = np.array(d)
+    if d.shape[1] == 113:
+        d = np.concatenate([d[:, :64],d[:, 65:]], axis=1)
+    d = np.concatenate([d[:, 1:46],d[:, 49:109]], axis=1)
 
-    return data, lab
+    lab = np.zeros((d.shape[0], CLASS))
+    for line in open(label_path):
+        if len(line) <= 1:
+            continue
+        a, b, c = line.split()
+        l = lmap[c]
+        for i in range(int(a), int(b)):
+            if l <= CLASS:
+                lab[i, l-1] = 1.
+
+    return d, lab
 
 def compress(l, thr=2):
     ret = []
@@ -52,36 +65,39 @@ def compress(l, thr=2):
         ret = compress(ret, thr=1)
     return ret
 
-d1, _ = load_data('random', 1, 1)
-d_train = np.concatenate(d1, axis=0)
-MEAN = np.mean(d_train, axis=0)
-STD = np.std(d_train, axis=0)
+train_datas = []
+train_labs = []
+test_datas = []
+test_labs = []
 
-d_em, _ = load_data('stand', 2, 1)
-d_l, _ = load_data('lock', 15, 1)
-d_s, _ = load_data('scuba', 12, 1)
-d_sk, _ = load_data('skitter', 5, 1)
-d_p, _ = load_data('punch', 5, 1)
-d_po, _ = load_data('point', 4, 1)
-d_lpo, _ = load_data('lpoint', 4, 1)
-d_m, _ = load_data('mix', 1, 1)
-d_t, _ = load_data('tempo3', 1, 1)
+load_label_map()
+files = glob.glob('../feature/*.txt_f.txt')
+for f in files:
+    fn = f.split('/')[-1].split('.')[0]
+    print('Loading {}...'.format(fn))
+    data, lab = load_data(fn)
+    if fn in ['test_01']:
+        test_datas.append(data)
+        test_labs.append(lab)
+    else:
+        train_datas.append(data)
+        train_labs.append(lab)
 
-d_em = np.concatenate(d_em, axis=0)
-d_l = np.concatenate(d_l, axis=0)
-d_s = np.concatenate(d_s, axis=0)
-d_sk = np.concatenate(d_sk, axis=0)
-d_p = np.concatenate(d_p, axis=0)
-d_po = np.concatenate(d_po, axis=0)
-d_lpo = np.concatenate(d_lpo, axis=0)
-d_m = np.concatenate(d_m, axis=0)
-d_t = np.concatenate(d_t, axis=0)
+train_datas = np.concatenate(train_datas, axis=0)
+train_labs = np.concatenate(train_labs, axis=0)
+test_datas = np.concatenate(test_datas, axis=0)
+test_labs = np.concatenate(test_labs, axis=0)
+test_intlabs = np.argmax(test_labs, axis=1)
 
-print('Preprocess complete')
+print('=== Load Complete. ===')
 
-EPOCH = 100
-CLASS = 6
-BATCH = 32
+MEAN = np.mean(train_datas, axis=0)
+STD = np.std(train_datas, axis=0)
+train_datas = (train_datas - MEAN) / STD
+test_datas = (test_datas - MEAN) / STD
+
+print('=== Preprocess Complete. ===')
+
 
 model = Sequential()
 
@@ -95,7 +111,7 @@ model = Sequential()
 # model.add(Activation("sigmoid"))
 # model.add(Dense(output_dim=CLASS, init="glorot_uniform"))
 
-model.add(LSTM(output_dim=128, input_dim=d_l.shape[1], activation='tanh', return_sequences=True))
+model.add(LSTM(output_dim=128, input_dim=train_datas.shape[1], activation='tanh', return_sequences=True))
 model.add(LSTM(output_dim=32, input_dim=128, activation='tanh', return_sequences=True))
 model.add(TimeDistributedDense(output_dim=CLASS, init="glorot_uniform"))
 
@@ -104,35 +120,18 @@ model.add(Activation("softmax"))
 # model.compile(loss='categorical_crossentropy', optimizer=SGD(lr=0.0003, momentum=0.9, nesterov=True))
 model.compile(loss='categorical_crossentropy', optimizer=Adam(lr=0.005))
 
-train = False
+train = True
 
 if train:
-    X = []
-    Y = []
-    W = {}
-    for i, z in enumerate([d_l, d_s, d_sk, d_p, d_po, d_lpo]):
-        X.append(z)
-        oz = np.zeros([CLASS])
-        oz[i] = 1
-        Y.extend([oz]*z.shape[0])
-        # W.extend([1./z.shape[0]]*z.shape[0])
-        W[i] = 1./z.shape[0]
+    print('=== Training Started. ===')
 
-    X = np.concatenate(X, axis=0)
-    Y = np.array(Y)
-    # W = np.array(W)
-    rat = len(Y) / sum(W)
-    for i in W:
-        W[i] *= rat
+    X = train_datas
+    Y = train_labels
 
     perm = list(range(len(Y)))
     random.shuffle(perm)
     X = X[perm,:]
     Y = Y[perm]
-    # W = W[perm]
-
-    xmean = np.mean(X, axis=0)
-    xstd = np.std(X, axis=0)
 
     print(X.shape, Y.shape)
     bn = Y.shape[0] // BATCH
@@ -142,26 +141,28 @@ if train:
     model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH)#, class_weight=W)
     model.save_weights('my_model_weights.h5')
 
+    print('=== Training Completed. ===')
+
 else:
     model.load_weights('my_model_weights.h5')
 
+print('=== Prediction Started. ===')
 
-dtt = d_t[np.newaxis,:,:]
+dtt = test_datas[np.newaxis,:,:]
 proba = model.predict_proba(dtt, batch_size=BATCH)
 proba = proba[0]
+
+print('=== Prediction Completed. ===')
 
 K = 25
 pf = [np.mean(proba[x:x+K, :], axis=0) for x in range(proba.shape[0]-K)]
 pf = np.array(pf)
 
-plt.plot(pf[:, 0], label='lock')
-plt.plot(pf[:, 1], label='scuba')
-plt.plot(pf[:, 2], label='skitter')
-plt.plot(pf[:, 3], label='punch')
-plt.plot(pf[:, 4], label='point')
-plt.plot(pf[:, 5], label='lpoint')
+for i in range(CLAS):
+    plt.plot(pf[:, i], label=lmap2[i])
 plt.legend()
 plt.show()
+
 
 exit()
 
