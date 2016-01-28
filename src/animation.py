@@ -10,24 +10,16 @@ from matplotlib import animation
 import random
 import glob
 
-def load_data(data_type, num, label):
-    data_path = '../feature'.format(data_type)
-    filenames = ['{}_{:02d}.txt_f.txt'.format(data_type, i) for i in range(1, num+1)]
-    filenames = [path.join(data_path, x) for x in filenames]
+def load_data(fn, label):
+    d = [[float(x) for x in l.strip().split()] for l in open(fn)]
+    d = np.array(d)
+    if d.shape[1] == 113:
+        d = np.concatenate([d[:, :64],d[:, 65:]], axis=1)
+    # d = np.concatenate([d[:, 1:46],d[:, 49:109]], axis=1)
 
-    data = []
+    lab = np.array([label] * d.shape[0])
 
-    for fn in filenames:
-        d = [[float(x) for x in l.strip().split()] for l in open(fn)]
-        d = np.array(d)
-        if d.shape[1] == 113:
-            d = np.concatenate([d[:, :64],d[:, 65:]], axis=1)
-        # d = np.concatenate([d[:, 1:46],d[:, 49:109]], axis=1)
-        data.append(d)
-
-    lab = [np.array([label] * x.shape[0]) for x in data]
-
-    return data, lab
+    return d, lab
 
 def compress(l, thr=2):
     ret = []
@@ -53,46 +45,49 @@ def transform(data):
 
     return x, y
 
-files = glob.glob('../feature/*.txt_f.txt')
-print(files)
-exit()
+def save_animation(filename):
+    fn = filename.split('/')[-1]
+    fn = fn.split('.')[0]
+    label, number = fn.split('_')
+    data, lb = load_data(filename, label)
+    X, Y = transform(data)
 
-
-
-data = np.concatenate(d_l, axis=0)
-X, Y = transform(data)
-
-fig = plt.figure()
-S = 3
-minX = -600 #np.mean(X) - S * np.std(X)
-maxX = 600 #np.mean(X) + S * np.std(X)
-minY = -1000 #np.mean(Y) - S * np.std(Y)
-maxY = 1000 #np.mean(Y) + S * np.std(Y)
-ax = plt.axes(xlim=(minX, maxX), ylim=(minY, maxY))
-lines = []
-for i in range(14):
-    lines.extend(ax.plot([], [], lw=2))
-ttl = ax.text(minX+100, maxY-200, 'xd', fontsize=20)
-
-st = [0, 1, 1, 1, 2, 3, 4, 5, 8,  8,  9, 10, 11, 12]
-ed = [1, 2, 3, 8, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14]
-
-def init():
+    fig = plt.figure()
+    S = 3
+    minX = -600 #np.mean(X) - S * np.std(X)
+    maxX = 600 #np.mean(X) + S * np.std(X)
+    minY = -1000 #np.mean(Y) - S * np.std(Y)
+    maxY = 1000 #np.mean(Y) + S * np.std(Y)
+    ax = plt.axes(xlim=(minX, maxX), ylim=(minY, maxY))
+    lines = []
     for i in range(14):
-        lines[i].set_data([], [])
-    ttl.set_text('')
-    return lines + [ttl]
+        lines.extend(ax.plot([], [], lw=2))
+    ttl = ax.text(minX+100, maxY-200, 'xd', fontsize=20)
 
-def animate(i):
-    x = X[i]
-    y = Y[i]
-    for j in range(14):
-        lines[j].set_data([x[st[j]], x[ed[j]]], [y[st[j]], y[ed[j]]])
-    ttl.set_text('{:04d}'.format(i))
-    return lines + [ttl]
+    st = [0, 1, 1, 1, 2, 3, 4, 5, 8,  8,  9, 10, 11, 12]
+    ed = [1, 2, 3, 8, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14]
 
-anim = animation.FuncAnimation(fig, animate, init_func=init,
-                               frames=X.shape[0], interval=20, blit=True)
+    def init():
+        for i in range(14):
+            lines[i].set_data([], [])
+        ttl.set_text('')
+        return lines + [ttl]
 
-anim.save('lock.mp4', fps=40, bitrate=2000)
-# plt.show()
+    def animate(i):
+        x = X[i]
+        y = Y[i]
+        for j in range(14):
+            lines[j].set_data([x[st[j]], x[ed[j]]], [y[st[j]], y[ed[j]]])
+        ttl.set_text('{:04d}'.format(i))
+        return lines + [ttl]
+
+    anim = animation.FuncAnimation(fig, animate, init_func=init,
+                                   frames=X.shape[0], interval=20, blit=True)
+
+    anim.save('../animate/{}_{}.mp4'.format(label, number), fps=40, bitrate=2000)
+    # plt.show()
+
+files = glob.glob('../feature/*.txt_f.txt')
+for f in files:
+    save_animation(f)
+    break
