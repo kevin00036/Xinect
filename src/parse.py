@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn import svm, cluster, decomposition, mixture
 from hmmlearn import hmm
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation, TimeDistributedDense
+from keras.layers.core import Dense, Dropout, Activation, TimeDistributedDense, Dropout
 from keras.layers.recurrent import LSTM
 from keras.layers.embeddings import Embedding
 from keras.layers.normalization import BatchNormalization
@@ -15,7 +15,7 @@ import glob
 
 EPOCH = 70
 CLASS = 5
-BATCH = 32
+BATCH = 64
 
 lmap = {}
 lmap2 = {}
@@ -90,7 +90,7 @@ for f in files:
     fn = f.split('/')[-1].split('.')[0]
     print('Loading {}...'.format(fn))
     data, lab = load_data(fn)
-    if fn in ['test_01', 'tempo1_01', 'tempo3_01']:
+    if fn in ['test_01', 'random_01', 'tempo3_01']:
         test_datas.append(data)
         test_labs.append(lab)
     else:
@@ -103,6 +103,7 @@ test_datas = np.concatenate(test_datas, axis=0)
 test_labs = np.concatenate(test_labs, axis=0)
 
 print('=== Load Complete. ===')
+print('# Training = {} / # Testing = {}'.format(train_datas.shape[0], test_datas.shape[0]))
 
 MEAN = np.mean(train_datas, axis=0)
 STD = np.std(train_datas, axis=0)
@@ -124,7 +125,10 @@ model = Sequential()
 # model.add(Dense(output_dim=CLASS, init="glorot_uniform"))
 
 model.add(LSTM(output_dim=128, input_dim=train_datas.shape[1], activation='tanh', return_sequences=True))
-model.add(LSTM(output_dim=32, input_dim=128, activation='tanh', return_sequences=True))
+# model.add(Dropout(0.5))
+model.add(LSTM(output_dim=32, activation='tanh', return_sequences=True))
+# model.add(Dropout(0.5))
+# model.add(LSTM(output_dim=12, activation='tanh', return_sequences=True))
 model.add(TimeDistributedDense(output_dim=CLASS, init="glorot_uniform"))
 
 model.add(Activation("softmax"))
@@ -145,12 +149,26 @@ if train:
     X = X[perm,:]
     Y = Y[perm]
 
-    print(X.shape, Y.shape)
     bn = Y.shape[0] // BATCH
     Xt = X[:BATCH*bn,:].reshape((BATCH, bn, X.shape[1]))
     Yt = Y[:BATCH*bn,:].reshape((BATCH, bn, Y.shape[1]))
-    print(Xt.shape, Yt.shape)
-    model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH, verbose=1, show_accuracy=True)
+    for epo in range(1, EPOCH+1):
+        loss = model.train_on_batch(Xt, Yt)
+        loss = float(loss[0])
+        print('Epoch {} : loss = {}'.format(epo, loss))
+
+        if epo % 5 == 0:
+            # train_proba = model.predict_proba(Xt, batch_size=BATCH)
+            # train_proba = train_proba.reshape((train_proba.shape[0]*train_proba.shape[1], train_proba.shape[2]))
+            # acc_train = calc_acc(train_proba, train_labs[:train_proba.shape[0], :])
+            train_proba = model.predict_proba(train_datas[np.newaxis,:,:], batch_size=BATCH)[0]
+            acc_train = calc_acc(train_proba, train_labs)
+            print('Acc_train = {}%'.format(100 * acc_train))
+
+            proba = model.predict_proba(test_datas[np.newaxis,:,:], batch_size=BATCH)[0]
+            acc_test = calc_acc(proba, test_labs)
+            print('Acc_test = {}%'.format(100 * acc_test))
+    # model.fit(Xt, Yt, nb_epoch=EPOCH, batch_size=BATCH, verbose=1, show_accuracy=True)
     model.save_weights('my_model_weights.h5')
 
     print('=== Training Completed. ===')
