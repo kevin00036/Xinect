@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import matplotlib
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 
 import numpy as np
 from os import path
@@ -98,5 +98,5 @@ def animate(i):
 anim = animation.FuncAnimation(fig, animate, init_func=init,
                                frames=X.shape[0], interval=20, blit=True)
 
-# anim.save('basic_animation.mp4', fps=30, bitrate=1000)
-plt.show()
+anim.save('lock.mp4', fps=40, bitrate=1000, writer='mencoder')
+# plt.show()
