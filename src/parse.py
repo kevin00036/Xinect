@@ -15,9 +15,6 @@ import random
 MEAN = None
 STD = None
 
-def cos_sim(a, b):
-    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
-
 def load_data(data_type, num, label):
     data_path = '../feature'.format(data_type)
     filenames = ['{}_{:02d}.txt_f.txt'.format(data_type, i) for i in range(1, num+1)]

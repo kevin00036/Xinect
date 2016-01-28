@@ -1,0 +1,10 @@
+L   1   Lock
+Sc  2   Scuba
+Sk  3   Skooby-do
+P_R 4   Punch_Right
+P_L 5   Punch_Left
+M   6   Muscle_man
+OIO 7   Out-In-Out
+T   8   Twist
+SR  9   Skitter-Rabbit
+St  10  Stand
