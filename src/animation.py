@@ -8,6 +8,7 @@ from os import path
 import matplotlib.pyplot as plt
 from matplotlib import animation
 import random
+import glob
 
 def load_data(data_type, num, label):
     data_path = '../feature'.format(data_type)
@@ -52,16 +53,11 @@ def transform(data):
 
     return x, y
 
-d1, _ = load_data('random', 1, 1)
-d_em, _ = load_data('stand', 2, 1)
-d_l, _ = load_data('lock', 15, 1)
-d_s, _ = load_data('scuba', 12, 1)
-d_sk, _ = load_data('skitter', 5, 1)
-d_p, _ = load_data('punch', 5, 1)
-d_po, _ = load_data('point', 4, 1)
-d_lpo, _ = load_data('lpoint', 4, 1)
-d_m, _ = load_data('mix', 1, 1)
-d_t, _ = load_data('tempo3', 1, 1)
+files = glob.glob('../feature/*.txt_f.txt')
+print(files)
+exit()
+
+
 
 data = np.concatenate(d_l, axis=0)
 X, Y = transform(data)
