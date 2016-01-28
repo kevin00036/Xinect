@@ -84,10 +84,11 @@ def save_animation(filename):
     anim = animation.FuncAnimation(fig, animate, init_func=init,
                                    frames=X.shape[0], interval=20, blit=True)
 
-    anim.save('../animate/{}_{}.mp4'.format(label, number), fps=40, bitrate=2000)
+    anim.save('../animate/{}_{}.mp4'.format(label, number), fps=40, bitrate=5000, dpi=200)
     # plt.show()
+    fig.close()
 
 files = glob.glob('../feature/*.txt_f.txt')
 for f in files:
+    print('Processing : {}'.format(f))
     save_animation(f)
-    break
